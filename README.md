@@ -20,6 +20,7 @@ Configuration:
 
 Result:
 
+![img_5.png](img_5.png)
 
 Configuration:
 

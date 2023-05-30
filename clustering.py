@@ -1,80 +1,45 @@
 import pandas as pd
-import numpy as np
-import time
-from denseclus import DenseClus
 from plot_utils import plot_join
+from utils import fit_DenseClus, dbcv_score
+from config import PATH
+from joblib import dump
+import datetime
+from hdbscan import prediction
+dfc0 = pd.read_csv(f'{PATH}ventasxsemana_11001_cluster_240523_corto.csv')
+dfc = dfc0[['total_item', ' B _tot', 'L_tot', 'L_PET_tot', 'M_tot', 'M_PET_tot',
+            'XL_tot', 'XL_PET_tot', 'YUMBO_tot', 'Momentum', 'freqmes', 'dias_compra', 'recency_class']].copy()
 
-dfc = pd.read_csv('./Data/ventasxsemana_11001_cluster_240523_corto.csv')
-dfc = dfc[['total_item', ' B _tot', 'L_tot', 'L_PET_tot', 'M_tot', 'M_PET_tot',
-           'XL_tot', 'XL_PET_tot', 'YUMBO_tot', 'Momentum', 'freqmes', 'dias_compra', 'recency_class']]
-
-dfc = dfc.head(50000)
+dfc = dfc.head(5000)
 
 dfc.dropna(inplace=True)
-def fit_DenseClus(df, params):
-    """Fits a DenseClus and returns all relevant information
-        df = data
-        params = dict with the prameters for the DenseClus
-
-        returns -------------
-        embedding =  transformed data points
-        clustered = boolean vector decides if  not noise
-        result = data frame with the embedding a and LABELS
-        DBCV = score
-        coverage = notNoise/total-points
-
-
-
-    """
-    np.random.seed(params['SEED'])
-    clf = DenseClus(
-        random_state=params['SEED'],
-        cluster_selection_method=params['cluster_selection_method'],
-        min_samples=params['min_samples'],
-        n_components=params['n_components'],
-        min_cluster_size=params['min_cluster_size'],
-        umap_combine_method=params['umap_combine_method']
-
-    )
-
-    start = time.time()
-    clf.fit(df)
-    print('time fitting ', (time.time() - start) / 60)
-    print(clf.n_components)
-    embedding = clf.mapper_.embedding_
-    labels = clf.score()
-
-    result = pd.DataFrame(clf.mapper_.embedding_)
-    result['LABELS'] = pd.Series(clf.score())
-    print('clusters ', len(set(result['LABELS'])) - 1)
-
-    lab_count = result['LABELS'].value_counts()
-    lab_count.name = 'LABEL_COUNT'
-
-    lab_normalized = result['LABELS'].value_counts(normalize=True)
-    lab_normalized.name = 'LABEL_PROPORTION'
-    print('ruido ', lab_normalized[-1])
-
-    clustered = result['LABELS'] >= 0
-    cnts = pd.DataFrame(clf.score())[0].value_counts()
-    cnts = cnts.reset_index()
-    cnts.columns = ['CLUSTER', 'COUNT']
-    print(cnts.sort_values(['CLUSTER']))
-    coverage = np.sum(clustered) / clf.mapper_.embedding_.shape[0]
-    print(f"Coverage {coverage}")
-    DBCV = clf.hdbscan_.relative_validity_
-    return embedding, clustered, result, DBCV, coverage, clf
-
 
 params = dict()
 params['cluster_selection_method'] = "eom"
-params['min_samples'] = 7
-params['n_components'] = 2
-params['min_cluster_size'] = 500
+params['min_samples'] = 8
+params['n_components'] = 3
+params['min_cluster_size'] = int(len(dfc) * 2 / 100)
 params['umap_combine_method'] = "intersection_union_mapper"
 params['SEED'] = None
 DBCV = -1
 while DBCV < 0.45:
     embedding, clustered, result, DBCV, coverage, clf = fit_DenseClus(dfc, params)
     print(DBCV)
-plot_join(embedding[clustered, 0], embedding[clustered, 1], result['LABELS'][clustered])
+    plot_join(embedding[clustered, 0], embedding[clustered, 1], result['LABELS'][clustered])
+
+active = dfc.query("recency_class=='Activo1'|recency_class=='Activo2'|recency_class=='Reciente1'").copy()
+indices = set(active.index)
+mst_df = clf.hdbscan_.minimum_spanning_tree_.to_pandas()
+mask = mst_df[(mst_df['from'].isin(indices)) & (mst_df['to'].isin(indices))]
+
+rel, local_dbcv, counts = dbcv_score(result, active.index, 'euclidean', mask)
+print(f" The DBCV for the active is {local_dbcv}")
+print(f" The relative DBCV for the active is {rel}")
+print(counts)
+current_time = datetime.datetime.now()
+formatted_time = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+file_name = f"DenseClus_{formatted_time}.jolib"
+dump(clf, f'{PATH}model.joblib')
+
+sample = result[[0, 1, 2]]
+
+prediction.approximate_predict(clf.hdbscan_, sample)

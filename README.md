@@ -26,3 +26,18 @@ Configuration:
 
 ![img_4.png](img_4.png)
 
+# Structure
+
+This project has the following scripts
+
+| Script        | Description                                          |
+|---------------|------------------------------------------------------|
+| config.py     | In this file are the global variables, such as paths |
+| clustering.py | This script preprocess and clusters the data         |
+| plot_utils.py | Utilities for the plots                              |
+| utils.py      | General utilities                                    |
+
+## PREDICTION
+
+Given a pretrained DenseClus  and a set of unlabeled 
+observations, the function predict in utils.py, produces the approximated labels 

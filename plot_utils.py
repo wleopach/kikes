@@ -16,9 +16,11 @@ def plot_join(x, y, labels, save=False, path=None):
         save = boolean to decide if save
         path = path to store the image
     """
+    sns.set_theme(palette="deep")
     _ = sns.jointplot(
-        x=x, y=y, kind="kde", hue=labels
+        x=x, y=y, kind="kde", hue=labels,
     )
+
     if save:
         if not path:
             path = input("please type path to image with file extension")
